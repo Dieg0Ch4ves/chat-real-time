@@ -9,10 +9,12 @@ import {
 } from '@nestjs/websockets';
 import { UsePipes, ValidationPipe, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
-import { AuthService } from '../auth/auth.service';
+import { AuthenticatedSocket, AuthService } from '../auth/auth.service';
 import { RedisService } from '../redis/redis.service';
 import { ChatService } from './chat.service';
 import { JoinRoomDto, SendMessageDto } from './dto/chat.dto';
+
+type ChatSocket = Socket<any, any, any, { user?: AuthenticatedSocket }>;
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -21,7 +23,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(ChatGateway.name);
 
   @WebSocketServer()
-  server: Server;
+  server!: Server;
 
   constructor(
     private readonly auth: AuthService,
@@ -29,9 +31,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly chat: ChatService,
   ) {}
 
-  async handleConnection(client: Socket) {
-    const token =
-      client.handshake.auth?.token ?? client.handshake.query?.token;
+  private extractToken(client: ChatSocket): string | undefined {
+    const authToken: unknown = client.handshake.auth.token;
+    if (typeof authToken === 'string') return authToken;
+
+    const queryToken = client.handshake.query.token;
+    return typeof queryToken === 'string' ? queryToken : undefined;
+  }
+
+  async handleConnection(client: ChatSocket) {
+    const token = this.extractToken(client);
 
     if (!token) {
       client.disconnect(true);
@@ -39,7 +48,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      const user = await this.auth.verifyToken(token);
+      const user = this.auth.verifyToken(token);
       client.data.user = user;
       await client.join(`user:${user.userId}`);
       await this.redis.setOnline(user.userId);
@@ -53,7 +62,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  async handleDisconnect(client: Socket) {
+  async handleDisconnect(client: ChatSocket) {
     const user = client.data.user;
     if (!user) return;
 
@@ -68,10 +77,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('room:join')
   @UsePipes(new ValidationPipe({ transform: true }))
   async onJoinRoom(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: ChatSocket,
     @MessageBody() dto: JoinRoomDto,
   ) {
-    const user = client.data.user;
+    const user = client.data.user!;
     await this.chat.joinRoom(dto.roomId, user.userId);
     await client.join(dto.roomId);
 
@@ -87,16 +96,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('message:send')
   @UsePipes(new ValidationPipe({ transform: true }))
   async onSendMessage(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: ChatSocket,
     @MessageBody() dto: SendMessageDto,
   ) {
-    const user = client.data.user;
+    const user = client.data.user!;
     const message = await this.chat.sendMessage(dto, user.userId);
 
-    // O adapter Redis (pub/sub) propaga o emit para todas as instâncias
     this.server.to(dto.roomId).emit('message:new', message);
 
-    // Avisa o próprio usuário em outras abas/dispositivos via sala user:<id>
     this.server.to(`user:${user.userId}`).emit('message:delivered', {
       id: message.id,
     });

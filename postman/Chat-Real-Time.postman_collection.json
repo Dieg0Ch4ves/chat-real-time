@@ -1,0 +1,205 @@
+{
+  "info": {
+    "_postman_id": "8afa88ff-ac9c-4968-8867-b38eeb99bc3f",
+    "name": "Chat Real-Time API",
+    "description": "Collection para testes manuais iniciais da API do chat-real-time (NestJS + Socket.IO + Redis + Postgres).\n\nFluxo sugerido:\n1. Rode **Health / Health Check** para confirmar que a API está no ar.\n2. Rode **Auth / Register** para criar um usuário (o token JWT é salvo automaticamente na variável `token`).\n3. Rode **Auth / Login** para autenticar (também atualiza `token`).\n4. Use o folder **WebSocket (Chat)** para instruções de teste manual dos eventos em tempo real — não são chamadas HTTP.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
+    { "key": "userEmail", "value": "teste@exemplo.com", "type": "string" },
+    { "key": "userName", "value": "Usuário Teste", "type": "string" },
+    { "key": "userPassword", "value": "senha123", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "roomId", "value": "sala-geral", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Verifica se a API está no ar (status, uptime, pid)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Corpo contém status ok', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"name\": \"{{userName}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Cria um novo usuário. Retorna 201 com access_token + dados do usuário, ou 409 se o e-mail já existir."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Register retorna 201 com access_token', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('access_token');",
+                  "  pm.expect(json.user).to.have.property('id');",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('token', json.access_token);",
+                  "  pm.collectionVariables.set('userId', json.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Register (email duplicado - 409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"name\": \"{{userName}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Roda DEPOIS do Register normal, com o mesmo e-mail. Deve retornar 409 Conflict (ConflictException: 'Email já cadastrado')."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Email duplicado retorna 409', function () {",
+                  "  pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Autentica um usuário existente. Retorna 200 com access_token + dados do usuário, ou 401 se as credenciais forem inválidas."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login retorna 200 com access_token', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('access_token');",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.collectionVariables.set('token', json.access_token);",
+                  "  pm.collectionVariables.set('userId', json.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Login (credenciais inválidas - 401)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"senhaErrada\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Testa login com senha errada. Deve retornar 401 Unauthorized."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Credenciais inválidas retornam 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "WebSocket (Chat)",
+      "description": "A API de chat em si roda via Socket.IO (WebSocket), não HTTP puro — por isso não dá pra testar como uma request comum do Postman de forma 100% portável entre versões. Duas formas de testar manualmente:\n\n**Opção 1 — Postman (App Desktop, versão 10.13+)**\n1. New > Socket.IO Request.\n2. URL: `{{baseUrl}}` (ex: http://localhost:3000).\n3. Em Auth/Headers da conexão, envie o token JWT obtido no Register/Login: `auth: { \"token\": \"{{token}}\" }` (o gateway aceita tanto `handshake.auth.token` quanto `?token=` na query string).\n4. Conecte. Se o token for inválido ou ausente, o servidor desconecta o socket imediatamente.\n5. Emita o evento `room:join` com payload `{ \"roomId\": \"{{roomId}}\" }` — resposta esperada: evento `room:joined` com `{ roomId, online, messages }`.\n6. Emita o evento `message:send` com payload `{ \"roomId\": \"{{roomId}}\", \"content\": \"Olá, mundo!\" }` — resposta esperada: ack com a mensagem criada, mais os eventos assíncronos `message:new` (para todos na sala) e `message:delivered` (para o próprio usuário, sala `user:<id>`).\n7. Ao conectar/desconectar, todos os clientes recebem `presence:update` com `{ userId, online }`.\n\n**Opção 2 — script Node rápido (fora do Postman)**\n```js\nconst { io } = require('socket.io-client');\nconst socket = io('http://localhost:3000', { auth: { token: '<TOKEN_AQUI>' } });\nsocket.on('connect', () => socket.emit('room:join', { roomId: 'sala-geral' }));\nsocket.on('room:joined', console.log);\nsocket.on('message:new', console.log);\nsocket.emit('message:send', { roomId: 'sala-geral', content: 'Olá!' });\n```\n\nSe preferir, posso gerar um clientezinho HTML/JS separado para testar isso direto do navegador — é só pedir.",
+      "item": []
+    }
+  ]
+}

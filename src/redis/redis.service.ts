@@ -12,7 +12,7 @@ export const REDIS_SUB = 'REDIS_SUB';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
-  private presenceClient: Redis;
+  private presenceClient!: Redis;
 
   constructor(
     @Inject(REDIS_PUB) readonly pub: Redis,

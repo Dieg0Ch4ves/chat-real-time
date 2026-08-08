@@ -1,14 +1,11 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
-import { Observable } from 'rxjs';
 import { AuthenticatedSocket, AuthService } from './auth.service';
 
 @Injectable()
 export class WsJwtGuard implements CanActivate {
   constructor(private readonly auth: AuthService) {}
 
-  canActivate(
-    context: ExecutionContext,
-  ): boolean | Promise<boolean> | Observable<boolean> {
+  canActivate(context: ExecutionContext): boolean {
     const client = context.switchToWs().getClient<{
       handshake: {
         auth?: { token?: string };
@@ -17,19 +14,17 @@ export class WsJwtGuard implements CanActivate {
       data: { user?: AuthenticatedSocket };
     }>();
 
-    const token =
-      client.handshake.auth?.token ?? client.handshake.query?.token;
+    const token = client.handshake.auth?.token ?? client.handshake.query?.token;
 
     if (!token) {
       return false;
     }
 
-    return this.auth
-      .verifyToken(token)
-      .then((user) => {
-        client.data.user = user;
-        return true;
-      })
-      .catch(() => false);
+    try {
+      client.data.user = this.auth.verifyToken(token);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

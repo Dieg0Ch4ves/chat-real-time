@@ -70,7 +70,7 @@ export class AuthService {
     };
   }
 
-  async verifyToken(token: string): Promise<AuthenticatedSocket> {
+  verifyToken(token: string): AuthenticatedSocket {
     try {
       const payload = this.jwt.verify<JwtPayload>(token);
       return {
