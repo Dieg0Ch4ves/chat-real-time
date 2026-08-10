@@ -1,29 +1,28 @@
 import { PrismaClient } from '@prisma/client';
-import * as crypto from 'crypto';
+import { hash } from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-async function main() {
-  const hash = (pw: string) =>
-    crypto.createHash('sha256').update(pw).digest('hex');
+const BCRYPT_ROUNDS = 12;
 
+async function main() {
   const alice = await prisma.user.upsert({
     where: { email: 'alice@chat.dev' },
-    update: {},
+    update: { password: await hash('secret123', BCRYPT_ROUNDS) },
     create: {
       email: 'alice@chat.dev',
       name: 'Alice',
-      password: hash('secret123'),
+      password: await hash('secret123', BCRYPT_ROUNDS),
     },
   });
 
   const bob = await prisma.user.upsert({
     where: { email: 'bob@chat.dev' },
-    update: {},
+    update: { password: await hash('secret123', BCRYPT_ROUNDS) },
     create: {
       email: 'bob@chat.dev',
       name: 'Bob',
-      password: hash('secret123'),
+      password: await hash('secret123', BCRYPT_ROUNDS),
     },
   });
 

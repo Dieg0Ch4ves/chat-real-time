@@ -1,12 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as crypto from 'crypto';
+import { compare, hash } from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-const sha256 = (value: string) =>
-  crypto.createHash('sha256').update(value).digest('hex');
+const TEST_ROUNDS = 4;
+
+const storedHash = (value: string) => hash(value, TEST_ROUNDS);
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -57,7 +58,7 @@ describe('AuthService', () => {
       });
     });
 
-    it('grava a senha com hash, nunca em texto puro', async () => {
+    it('grava a senha com hash bcrypt salgado, nunca em texto puro', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       prisma.user.create.mockResolvedValue({
         id: 'user-1',
@@ -66,14 +67,16 @@ describe('AuthService', () => {
       });
 
       await service.register(dto);
+      await service.register(dto);
 
-      expect(prisma.user.create).toHaveBeenCalledWith({
-        data: {
-          email: dto.email,
-          name: dto.name,
-          password: sha256(dto.password),
-        },
-      });
+      const [first, second] = prisma.user.create.mock.calls.map(
+        ([arg]) => (arg as { data: { password: string } }).data.password,
+      );
+
+      expect(first).not.toBe(dto.password);
+      expect(first).toMatch(/^\$2[aby]\$\d{2}\$/);
+      expect(first).not.toBe(second);
+      await expect(compare(dto.password, first)).resolves.toBe(true);
     });
 
     it('rejeita com ConflictException quando o email já existe', async () => {
@@ -94,7 +97,7 @@ describe('AuthService', () => {
         id: 'user-1',
         email: dto.email,
         name: 'Ana',
-        password: sha256(dto.password),
+        password: await storedHash(dto.password),
       });
       jwt.sign.mockReturnValue('token-assinado');
 
@@ -113,7 +116,7 @@ describe('AuthService', () => {
         id: 'user-1',
         email: dto.email,
         name: 'Ana',
-        password: sha256('outra-senha'),
+        password: await storedHash('outra-senha'),
       });
 
       await expect(service.login(dto)).rejects.toBeInstanceOf(

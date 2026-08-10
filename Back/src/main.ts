@@ -12,7 +12,13 @@ async function bootstrap() {
   const config = app.get(ConfigService);
   const redis = app.get(RedisService);
 
-  app.useGlobalPipes(new ValidationPipe({ transform: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  );
 
   const adapter = new RedisIoAdapter(app, redis.pub, redis.sub);
   adapter.connectToRedis();

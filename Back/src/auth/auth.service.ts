@@ -4,9 +4,11 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as crypto from 'crypto';
+import { compare, hash } from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
+
+const BCRYPT_ROUNDS = 12;
 
 export interface JwtPayload {
   sub: string;
@@ -27,8 +29,8 @@ export class AuthService {
     private readonly jwt: JwtService,
   ) {}
 
-  private hash(password: string): string {
-    return crypto.createHash('sha256').update(password).digest('hex');
+  private hashPassword(password: string): Promise<string> {
+    return hash(password, BCRYPT_ROUNDS);
   }
 
   async register(dto: RegisterDto) {
@@ -43,7 +45,7 @@ export class AuthService {
       data: {
         email: dto.email,
         name: dto.name,
-        password: this.hash(dto.password),
+        password: await this.hashPassword(dto.password),
       },
     });
 
@@ -55,7 +57,7 @@ export class AuthService {
       where: { email: dto.email },
     });
 
-    if (!user || user.password !== this.hash(dto.password)) {
+    if (!user || !(await compare(dto.password, user.password))) {
       throw new UnauthorizedException('Credenciais inválidas');
     }
 

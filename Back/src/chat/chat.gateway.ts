@@ -7,7 +7,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { UsePipes, ValidationPipe, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { AuthenticatedSocket, AuthService } from '../auth/auth.service';
 import { RedisService } from '../redis/redis.service';
@@ -75,7 +75,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('room:join')
-  @UsePipes(new ValidationPipe({ transform: true }))
   async onJoinRoom(
     @ConnectedSocket() client: ChatSocket,
     @MessageBody() dto: JoinRoomDto,
@@ -94,7 +93,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('message:send')
-  @UsePipes(new ValidationPipe({ transform: true }))
   async onSendMessage(
     @ConnectedSocket() client: ChatSocket,
     @MessageBody() dto: SendMessageDto,

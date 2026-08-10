@@ -9,7 +9,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U chat -d chat"]
       interval: 5s
@@ -31,7 +31,7 @@ services:
       retries: 10
 
   app:
-    build: .
+    build: ./Back
     restart: unless-stopped
     deploy:
       replicas: 3
@@ -39,7 +39,7 @@ services:
       DATABASE_URL: "postgresql://chat:chat@postgres:5432/chat?schema=public"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      JWT_SECRET: "${JWT_SECRET:-dev-secret-change-me}"
+      JWT_SECRET: "${JWT_SECRET:?defina JWT_SECRET no .env antes de subir}"
       JWT_EXPIRES_IN: 7d
       PORT: "3000"
     depends_on:
@@ -49,13 +49,15 @@ services:
         condition: service_healthy
 
   migrate:
-    build: .
+    build:
+      context: ./Back
+      target: build
     command: ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed"]
     environment:
       DATABASE_URL: "postgresql://chat:chat@postgres:5432/chat?schema=public"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
-      JWT_SECRET: "${JWT_SECRET:-dev-secret-change-me}"
+      JWT_SECRET: "${JWT_SECRET:?defina JWT_SECRET no .env antes de subir}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,9 +71,21 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./Back/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - app
+
+  front:
+    build: ./Front
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      PORT: "5173"
+      API_URL: "http://nginx:80"
+      PUBLIC_API_URL: "${PUBLIC_API_URL:-http://localhost:8080}"
+    depends_on:
+      - nginx
 
 volumes:
   pgdata:

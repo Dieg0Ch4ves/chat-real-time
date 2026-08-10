@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { io, Socket } from 'socket.io-client';
 import request from 'supertest';
 import type { AddressInfo } from 'net';
+import type { Server } from 'http';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisIoAdapter } from '../src/redis/redis-io.adapter';
@@ -11,6 +12,7 @@ import { RedisService } from '../src/redis/redis.service';
 describe('Chat (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let httpServer: Server;
   let baseUrl: string;
 
   const suffix = Date.now();
@@ -47,7 +49,13 @@ describe('Chat (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    );
     await app.init();
 
     const redis = app.get(RedisService);
@@ -58,7 +66,8 @@ describe('Chat (e2e)', () => {
     await app.listen(0);
 
     prisma = app.get(PrismaService);
-    const address = app.getHttpServer().address() as AddressInfo;
+    httpServer = app.getHttpServer() as Server;
+    const address = httpServer.address() as AddressInfo;
     baseUrl = `http://localhost:${address.port}`;
   });
 
@@ -78,15 +87,13 @@ describe('Chat (e2e)', () => {
 
   describe('HTTP', () => {
     it('GET /health responde ok', async () => {
-      const response = await request(app.getHttpServer())
-        .get('/health')
-        .expect(200);
+      const response = await request(httpServer).get('/health').expect(200);
 
       expect(response.body).toMatchObject({ status: 'ok' });
     });
 
     it('POST /auth/register cria o usuário e devolve o token', async () => {
-      const response = await request(app.getHttpServer())
+      const response = await request(httpServer)
         .post('/auth/register')
         .send(credentials)
         .expect(201);
@@ -101,23 +108,30 @@ describe('Chat (e2e)', () => {
     });
 
     it('POST /auth/register rejeita email duplicado com 409', async () => {
-      await request(app.getHttpServer())
+      await request(httpServer)
         .post('/auth/register')
         .send(credentials)
         .expect(409);
     });
 
     it('POST /auth/login rejeita senha errada com 401', async () => {
-      await request(app.getHttpServer())
+      await request(httpServer)
         .post('/auth/login')
         .send({ email: credentials.email, password: 'senha-errada' })
         .expect(401);
     });
 
     it('POST /auth/register valida o corpo da requisição com 400', async () => {
-      await request(app.getHttpServer())
+      await request(httpServer)
         .post('/auth/register')
         .send({ email: 'nao-e-email', name: 'x', password: '123' })
+        .expect(400);
+    });
+
+    it('POST /auth/register rejeita campos fora do DTO com 400', async () => {
+      await request(httpServer)
+        .post('/auth/register')
+        .send({ ...credentials, id: 'id-escolhido-pelo-cliente' })
         .expect(400);
     });
   });
@@ -127,7 +141,7 @@ describe('Chat (e2e)', () => {
     let userId: string;
 
     beforeAll(async () => {
-      const response = await request(app.getHttpServer())
+      const response = await request(httpServer)
         .post('/auth/login')
         .send({ email: credentials.email, password: credentials.password })
         .expect(200);
